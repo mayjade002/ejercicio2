@@ -1,47 +1,33 @@
-name: Deploy to EC2
+name: Node.js CI
 
 on:
-  push:
-    branches:
-      - main
+    push:
+        branches: [ main ]
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+    build:
+        runs-on: ubuntu-latest
 
-    steps:
-      # Paso 1: Hacer checkout del repositorio
-      - name: Checkout repository
-        uses: actions/checkout@v2
+        strategy:
+            matrix:
+                ec2_instance: 
+                    - ec2-3.88.214.68.compute-1.amazonaws.com
+                    - ec2-35.172.226.171.compute-1.amazonaws.com
 
-      # Paso 2: Configurar la clave SSH para conectar con las EC2
-      - name: Set up SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.key1}}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          # Agregar las direcciones IP de las instancias EC2
-          ssh-keyscan -H 184.73.132.33 >> ~/.ssh/known_hosts
-          ssh-keyscan -H 184.72.164.164 >> ~/.ssh/known_hosts
+        steps:
+            - name: 'Configurando SSH'
+              run: |
+                echo "${{ secrets.key1 }}" > key.pem
+                chmod 400 key.pem
 
-      # Paso 3: Desplegar los archivos en la primera instancia EC2
-      - name: Deploy to Instance 1
-        run: |
-          ssh -o StrictHostKeyChecking=no ec2-user@184.73.132.33 << 'EOF'
-            cd /home/ec2-user/ejercicio2 || git clone https://github.com/mayjade002/ejercicio2.git
-            cd ejercicio2
-            git pull origin main  # Actualizar los archivos del repositorio
-            sudo cp index.html /var/www/html/  # Copiar index.html al directorio de Nginx
-            sudo systemctl restart nginx  # Reiniciar Nginx
-          EOF
+            - name: 'Actualizar repositorio en EC2'
+              run: |
+                ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ matrix.ec2_instance }} "
+                cd /var/www/html && git pull"
 
-      # Paso 4: Desplegar los archivos en la segunda instancia EC2
-      - name: Deploy to Instance 2
-        run: |
-          ssh -o StrictHostKeyChecking=no ec2-user@184.72.164.164 << 'EOF'
-            cd /home/ec2-user/ejercicio2 || git clone https://github.com/mayjade002/ejercicio2.git
-            cd ejercicio2
-            git pull origin main  # Actualizar los archivos del repositorio
-            sudo cp index.html /var/www/html/  # Copiar index.html al directorio de Nginx
-            sudo systemctl restart nginx  # Reiniciar Nginx
-          EOF
+            - name: 'Reiniciar Servicio'
+              run: |
+                ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ matrix.ec2_instance }} "sudo systemctl restart nginx"
+
+            - name: 'Eliminar clave SSH'
+              run: rm key.pem
